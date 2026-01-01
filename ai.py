@@ -550,6 +550,49 @@ Wait for their answer."""
         except Exception as e:
             await ctx.send(f"❌ Error: {str(e)}")
 
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        # Ignore own messages or bots
+        if message.author.bot:
+            return
+
+        # Ignore commands (start with prefix)
+        if message.content.startswith('!'):
+            return
+
+        # Check interaction triggers: Mention, DM, or Reply
+        is_mentioned = self.bot.user.mentioned_in(message)
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        is_reply = False
+        if message.reference and message.reference.resolved:
+             if isinstance(message.reference.resolved, discord.Message):
+                 if message.reference.resolved.author == self.bot.user:
+                     is_reply = True
+
+        if is_mentioned or is_dm or is_reply:
+            async with message.channel.typing():
+                # Clean text
+                clean_text = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
+                
+                # Check attachments
+                image_bytes = None
+                if message.attachments:
+                    for att in message.attachments:
+                        if any(att.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                            image_bytes = await self.download_image(att.url)
+                            break
+                
+                # Get AI response
+                response = self.get_gemini_response(clean_text, message.author.id, username=message.author.name, image_bytes=image_bytes)
+                
+                # Reply
+                if len(response) > 1900:
+                    chunks = [response[i:i+1900] for i in range(0, len(response), 1900)]
+                    for chunk in chunks:
+                        await message.reply(chunk)
+                else:
+                    await message.reply(response)
+
 
 async def setup(bot):
     await bot.add_cog(AICog(bot))
